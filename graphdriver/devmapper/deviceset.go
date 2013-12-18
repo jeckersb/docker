@@ -728,13 +728,21 @@ func (devices *DeviceSet) Shutdown() error {
 		delete(devices.activeMounts, path)
 	}
 
+	done := make(chan bool)
 	for _, d := range devices.Devices {
-		if err := devices.waitClose(d.Hash); err != nil {
-			utils.Errorf("Warning: error waiting for device %s to unmount: %s\n", d.Hash, err)
-		}
-		if err := devices.deactivateDevice(d.Hash); err != nil {
-			utils.Debugf("Shutdown deactivate %s , error: %s\n", d.Hash, err)
-		}
+		go func() {
+			if err := devices.waitClose(d.Hash); err != nil {
+				utils.Errorf("Warning: error waiting for device %s to unmount: %s\n", d.Hash, err)
+			}
+			if err := devices.deactivateDevice(d.Hash); err != nil {
+				utils.Debugf("Shutdown deactivate %s , error: %s\n", d.Hash, err)
+			}
+			done <- true
+		}()
+	}
+
+	for i := 0; i < len(devices.Devices); i++ {
+		<-done
 	}
 
 	pool := devices.getPoolDevName()
